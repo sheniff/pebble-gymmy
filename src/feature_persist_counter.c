@@ -12,6 +12,7 @@ static GBitmap *action_icon_minus;
 static ActionBarLayer *action_bar;
 
 static TextLayer *header_text_layer;
+static TextLayer *signature_text_layer;
 static TextLayer *superbody_text_layer;
 static TextLayer *body_text_layer;
 static TextLayer *subbody_text_layer;
@@ -196,11 +197,17 @@ static void window_load(Window *me) {
   const int16_t width = layer_get_frame(layer).size.w - ACTION_BAR_WIDTH - 3;
   const int16_t height = layer_get_frame(layer).size.h;
   
-  header_text_layer = text_layer_create(GRect(4, 0, width, 60));
-  text_layer_set_font(header_text_layer, fonts_get_system_font(FONT_KEY_GOTHIC_24));
+  header_text_layer = text_layer_create(GRect(4, 0, width, 30));
+  text_layer_set_font(header_text_layer, fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD));
   text_layer_set_background_color(header_text_layer, GColorClear);
-  text_layer_set_text(header_text_layer, "Gymmy");
+  text_layer_set_text(header_text_layer, "Gymmy!");
   layer_add_child(layer, text_layer_get_layer(header_text_layer));
+
+  signature_text_layer = text_layer_create(GRect(70, 10, 80, 20));
+  text_layer_set_font(signature_text_layer, fonts_get_system_font(FONT_KEY_GOTHIC_14));
+  text_layer_set_background_color(signature_text_layer, GColorClear);
+  text_layer_set_text(signature_text_layer, "by Sheniff");
+  layer_add_child(layer, text_layer_get_layer(signature_text_layer));
 
   superbody_text_layer = text_layer_create(GRect(4, 34, width, 20));
   text_layer_set_font(superbody_text_layer, fonts_get_system_font(FONT_KEY_GOTHIC_18));
