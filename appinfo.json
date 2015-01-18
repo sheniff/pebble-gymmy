@@ -1,0 +1,30 @@
+{
+    "appKeys": {},
+    "capabilities": [
+        ""
+    ],
+    "companyName": "sheniff@gmail.com",
+    "longName": "Gymmy",
+    "projectType": "native",
+    "resources": {
+        "media": [
+            {
+                "file": "images/action_icon_minus.png",
+                "name": "IMAGE_ACTION_ICON_MINUS",
+                "type": "png"
+            },
+            {
+                "file": "images/action_icon_plus.png",
+                "name": "IMAGE_ACTION_ICON_PLUS",
+                "type": "png"
+            }
+        ]
+    },
+    "shortName": "Gymmy",
+    "uuid": "0d0ebea1-90b9-438a-881a-ff70734b2847",
+    "versionCode": 1,
+    "versionLabel": "1.0",
+    "watchapp": {
+        "watchface": false
+    }
+}
