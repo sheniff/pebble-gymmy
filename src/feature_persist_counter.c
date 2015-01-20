@@ -1,8 +1,13 @@
+/*
+ToDo:
+- Exercise's name animation (control name's length to do properly...)
+- Progress bar (split by `#exercises * #series` each)
+*/
 #include "pebble.h"
 
-// This is a custom defined key for saving our count field
-#define NUM_DRINKS_PKEY 1
 #define TIME_OPTIONS 3
+#define ANIM_DELAY 500
+#define ANIM_DURATION 4000
 
 static Window *window;
 
@@ -37,7 +42,38 @@ static int num_exercises = 2;
 static int current_exercise = 0;
 static int current_series = 0;
 
+static int16_t windowWidth;
+static GRect initialNamePosition;
+static PropertyAnimation *text_animation;
+
+//////////////////////
+// function prototypes
+static void initWorkout();
+static void notify_is_next_workout(bool isNext);
+static void set_next_workout();
+
+static void update_exercise_pos_text();
+static void update_exercise_name_text();
+static void update_exercise_desc_text();
+static void update_timer_text();
+static void update_times_menu();
+
+static void anim_stopped_handler(Animation *animation, bool finished, void *context);
+static void tick_countdown_handler(struct tm *tick_time, TimeUnits units_change);
+static void next_workout_handler();
+static void restart_handler(ClickRecognizerRef recognizer, void *context);
+static void next_time_handler(ClickRecognizerRef recognizer, void *context);
+static void reset_workout_handler();
+
+static void start_animation();
+static void start_watch();
+static void stop_watch();
+static void pause_watch();
+
+///////////////////////////
+// function implementations
 static void initWorkout() {
+  num_exercises = 7;
   // Workout declaration (ToDo: Fetch from somewhere)
   strcpy(workout[0].name, "Calentar con press inclinado");
   workout[0].series = 2;
@@ -49,6 +85,34 @@ static void initWorkout() {
   workout[1].reps[1] = 10;
   workout[1].reps[2] = 8;
   workout[1].reps[3] = 6;
+  strcpy(workout[2].name, "Press de banca");
+  workout[2].series = 4;
+  workout[2].reps[0] = 12;
+  workout[2].reps[1] = 10;
+  workout[2].reps[2] = 10;
+  workout[2].reps[3] = 8;
+  strcpy(workout[3].name, "Aperturas declinadas");
+  workout[3].series = 4;
+  workout[3].reps[0] = 8;
+  workout[3].reps[1] = 8;
+  workout[3].reps[2] = 8;
+  workout[3].reps[3] = 6;
+  strcpy(workout[4].name, "Press de banca agarre cerrado");
+  workout[4].series = 4;
+  workout[4].reps[0] = 10;
+  workout[4].reps[1] = 8;
+  workout[4].reps[2] = 8;
+  workout[4].reps[3] = 6;
+  strcpy(workout[5].name, "Press francés");
+  workout[5].series = 3;
+  workout[5].reps[0] = 12;
+  workout[5].reps[1] = 10;
+  workout[5].reps[2] = 8;
+  strcpy(workout[6].name, "Fondo entre bancos");
+  workout[6].series = 3;
+  workout[6].reps[0] = -1;
+  workout[6].reps[1] = -1;
+  workout[6].reps[2] = -1;
 }
 
 static void update_exercise_pos_text() {
@@ -61,13 +125,58 @@ static void update_exercise_pos_text() {
   text_layer_set_text(superbody_text_layer, txt);
 }
 
+static void anim_stopped_handler(Animation *animation, bool finished, void *context) {
+  // Free the animation
+  property_animation_destroy(text_animation);
+  
+  // Schedule the next one, unless the app is exiting
+  if (finished) {
+    update_exercise_name_text();
+  }
+}
+
+static void start_animation(int offset) {
+  // Set start and end
+  GRect from_frame = layer_get_frame((Layer *) body_text_layer);
+  GRect to_frame = GRect(from_frame.origin.x - offset, from_frame.origin.y, from_frame.size.w + offset, from_frame.size.h);
+
+  // Create the animation
+  text_animation = property_animation_create_layer_frame((Layer *) body_text_layer, &from_frame, &to_frame);
+  animation_set_duration((Animation*)text_animation, ANIM_DURATION);
+  animation_set_delay((Animation*)text_animation, ANIM_DELAY);
+  animation_set_curve((Animation*)text_animation, AnimationCurveLinear);
+  animation_set_handlers((Animation*)text_animation, (AnimationHandlers) {
+    .stopped = anim_stopped_handler
+  }, NULL);
+  
+  // Schedule to occur ASAP with default settings
+  animation_schedule((Animation*) text_animation);
+}
+
 static void update_exercise_name_text() {
+  layer_set_frame ((Layer *) body_text_layer, initialNamePosition);
+
   text_layer_set_text(body_text_layer, workout[current_exercise].name);
+  
+  GSize size = graphics_text_layout_get_content_size(
+    workout[current_exercise].name,
+    fonts_get_system_font(FONT_KEY_GOTHIC_28_BOLD),
+    GRect(0,0,1000,30),
+    GTextOverflowModeTrailingEllipsis,
+    GTextAlignmentLeft
+  );
+
+  int offset = size.w - windowWidth;
+
+  if(offset > 0) {
+    animation_unschedule((Animation*) text_animation);
+    start_animation(offset);
+  }
 }
 
 static void update_exercise_desc_text() {
   static char txt[20];
-  snprintf(txt, sizeof(txt), "%u/%u (%u reps)", current_series + 1, workout[current_exercise].series, workout[current_exercise].reps[current_series]);
+  snprintf(txt, sizeof(txt), "%u/%u (%d reps)", current_series + 1, workout[current_exercise].series, workout[current_exercise].reps[current_series]);
   text_layer_set_text(subbody_text_layer, txt);  
 }
 
@@ -194,7 +303,7 @@ static void window_load(Window *me) {
   action_bar_layer_set_icon(action_bar, BUTTON_ID_DOWN, action_icon_minus);
 
   Layer *layer = window_get_root_layer(me);
-  const int16_t width = layer_get_frame(layer).size.w - ACTION_BAR_WIDTH - 3;
+  const int16_t width = windowWidth = layer_get_frame(layer).size.w - ACTION_BAR_WIDTH - 3;
   const int16_t height = layer_get_frame(layer).size.h;
   
   header_text_layer = text_layer_create(GRect(4, 0, width, 30));
@@ -214,7 +323,8 @@ static void window_load(Window *me) {
   text_layer_set_background_color(superbody_text_layer, GColorClear);
   layer_add_child(layer, text_layer_get_layer(superbody_text_layer));
 
-  body_text_layer = text_layer_create(GRect(4, 46, width, 30));
+  initialNamePosition = GRect(4, 46, width, 30);
+  body_text_layer = text_layer_create(initialNamePosition);
   text_layer_set_font(body_text_layer, fonts_get_system_font(FONT_KEY_GOTHIC_28_BOLD));
   text_layer_set_background_color(body_text_layer, GColorClear);
   layer_add_child(layer, text_layer_get_layer(body_text_layer));
@@ -263,15 +373,12 @@ static void init(void) {
     .unload = window_unload,
   });
 
-  // Get the count from persistent storage for use if it exists, otherwise use the default
-  // num_drinks = persist_exists(NUM_DRINKS_PKEY) ? persist_read_int(NUM_DRINKS_PKEY) : NUM_DRINKS_DEFAULT;
-
   window_stack_push(window, true /* Animated */);
 }
 
 static void deinit(void) {
-  // Save the count into persistent storage on app exit
-  // persist_write_int(NUM_DRINKS_PKEY, num_drinks);
+  // Stop any animation in progress
+  animation_unschedule_all();
 
   window_destroy(window);
 
