@@ -1,5 +1,12 @@
 {
-    "appKeys": {},
+    "appKeys": {
+        "KEY_EXERCISE_NAME": 3,
+        "KEY_EXERCISE_NUMBER": 2,
+        "KEY_EXERCISE_REPS": 5,
+        "KEY_EXERCISE_SERIES": 4,
+        "KEY_MESSAGE_TYPE": 0,
+        "KEY_NUM_EXERCISES": 1
+    },
     "capabilities": [
         ""
     ],
@@ -20,6 +27,7 @@
             }
         ]
     },
+    "sdkVersion": "2",
     "shortName": "Gymmy",
     "uuid": "0d0ebea1-90b9-438a-881a-ff70734b2847",
     "versionCode": 1,

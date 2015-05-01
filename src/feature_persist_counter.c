@@ -9,6 +9,13 @@ ToDo:
 #define ANIM_DELAY 500
 #define ANIM_DURATION 4000
 
+#define KEY_MESSAGE_TYPE 0
+#define KEY_NUM_EXERCISES 1
+#define KEY_EXERCISE_NUMBER 2
+#define KEY_EXERCISE_NAME 3
+#define KEY_EXERCISE_SERIES 4
+#define KEY_EXERCISE_REPS 5
+  
 static Window *window;
 
 static GBitmap *action_icon_plus;
@@ -34,11 +41,11 @@ static TextLayer *times_layers[TIME_OPTIONS];
 struct Exercise {
   char name[40];
   int series;
-  int reps[5];
+  uint8_t reps[12];
 };
 
 struct Exercise workout[10];
-static int num_exercises = 2;
+static int num_exercises = 0;
 static int current_exercise = 0;
 static int current_series = 0;
 
@@ -48,10 +55,10 @@ static PropertyAnimation *text_animation;
 
 //////////////////////
 // function prototypes
-static void initWorkout();
 static void notify_is_next_workout(bool isNext);
 static void set_next_workout();
 
+static void refreshUI();
 static void update_exercise_pos_text();
 static void update_exercise_name_text();
 static void update_exercise_desc_text();
@@ -65,6 +72,14 @@ static void restart_handler(ClickRecognizerRef recognizer, void *context);
 static void next_time_handler(ClickRecognizerRef recognizer, void *context);
 static void reset_workout_handler();
 
+static void inbox_received_callback(DictionaryIterator *iterator, void *context);
+static void inbox_dropped_callback(AppMessageResult reason, void *context);
+static void outbox_failed_callback(DictionaryIterator *iterator, AppMessageResult reason, void *context);
+static void outbox_sent_callback(DictionaryIterator *iterator, void *context);
+
+static void digestWorkout(DictionaryIterator *iterator);
+static int digestExercise(DictionaryIterator *iterator);
+
 static void start_animation();
 static void start_watch();
 static void stop_watch();
@@ -72,47 +87,131 @@ static void pause_watch();
 
 ///////////////////////////
 // function implementations
-static void initWorkout() {
-  num_exercises = 7;
-  // Workout declaration (ToDo: Fetch from somewhere)
-  strcpy(workout[0].name, "Calentar con press inclinado");
-  workout[0].series = 2;
-  workout[0].reps[0] = 15;
-  workout[0].reps[1] = 15;
-  strcpy(workout[1].name, "Press inclinado");
-  workout[1].series = 4;
-  workout[1].reps[0] = 10;
-  workout[1].reps[1] = 10;
-  workout[1].reps[2] = 8;
-  workout[1].reps[3] = 6;
-  strcpy(workout[2].name, "Press de banca");
-  workout[2].series = 4;
-  workout[2].reps[0] = 12;
-  workout[2].reps[1] = 10;
-  workout[2].reps[2] = 10;
-  workout[2].reps[3] = 8;
-  strcpy(workout[3].name, "Aperturas declinadas");
-  workout[3].series = 4;
-  workout[3].reps[0] = 8;
-  workout[3].reps[1] = 8;
-  workout[3].reps[2] = 8;
-  workout[3].reps[3] = 6;
-  strcpy(workout[4].name, "Press de banca agarre cerrado");
-  workout[4].series = 4;
-  workout[4].reps[0] = 10;
-  workout[4].reps[1] = 8;
-  workout[4].reps[2] = 8;
-  workout[4].reps[3] = 6;
-  strcpy(workout[5].name, "Press francés");
-  workout[5].series = 3;
-  workout[5].reps[0] = 12;
-  workout[5].reps[1] = 10;
-  workout[5].reps[2] = 8;
-  strcpy(workout[6].name, "Fondo entre bancos");
-  workout[6].series = 3;
-  workout[6].reps[0] = -1;
-  workout[6].reps[1] = -1;
-  workout[6].reps[2] = -1;
+
+// START AppMessage Communication
+static void inbox_received_callback(DictionaryIterator *iterator, void *context) {
+  // Read first item
+  Tuple *t = dict_read_first(iterator);
+  int message_type = (int)t->value->int8;
+  
+  APP_LOG(APP_LOG_LEVEL_DEBUG, "wut %d", message_type);
+  
+  if(message_type == 0) {
+    current_exercise = 0;
+    current_series = 0;
+    digestWorkout(iterator);
+  } else if (message_type == 1) { 
+    digestExercise(iterator);
+  }
+  
+  // update UI in any case
+  refreshUI();
+}
+
+static void inbox_dropped_callback(AppMessageResult reason, void *context) {
+  APP_LOG(APP_LOG_LEVEL_ERROR, "Message dropped!");
+}
+
+static void outbox_failed_callback(DictionaryIterator *iterator, AppMessageResult reason, void *context) {
+  APP_LOG(APP_LOG_LEVEL_ERROR, "Outbox send failed!");
+}
+
+static void outbox_sent_callback(DictionaryIterator *iterator, void *context) {
+  APP_LOG(APP_LOG_LEVEL_INFO, "Outbox send success!");
+}
+// END AppMessage Communication
+
+static void digestWorkout(DictionaryIterator *iterator) {
+    // process workout
+    Tuple *t = dict_read_next(iterator);
+    num_exercises = (int)t->value->int8;
+
+    APP_LOG(APP_LOG_LEVEL_DEBUG, "got num exercises %d", num_exercises);
+
+    if (num_exercises > 0) {
+      // Fetch first exercise
+      APP_LOG(APP_LOG_LEVEL_DEBUG, "request exercise %d", 0);
+
+      // Begin dictionary
+      DictionaryIterator *iter;
+      app_message_outbox_begin(&iter);
+    
+      // Add a key-value pair
+      dict_write_uint8(iter, KEY_EXERCISE_NUMBER, 0);
+    
+      // Send the message!
+      app_message_outbox_send();      
+    }
+}
+
+static int digestExercise(DictionaryIterator *iterator) {
+  
+  APP_LOG(APP_LOG_LEVEL_DEBUG, "digesting exercise...");
+
+  Tuple *t = dict_read_next(iterator);
+  // process exercise
+  char name[40];
+  int exNumber = -1;
+  int exSeries = 0;
+  uint8_t reps[12];
+
+  while(t != NULL) {
+    switch(t->key) {
+      case KEY_EXERCISE_NUMBER:
+      exNumber = (int)t->value->int8;
+      break;
+      case KEY_EXERCISE_NAME:
+      snprintf(name, sizeof(name), "%s", t->value->cstring);
+      break;
+      case KEY_EXERCISE_SERIES:
+      exSeries = (int)t->value->int8;
+      break;
+      case KEY_EXERCISE_REPS:
+        APP_LOG(APP_LOG_LEVEL_DEBUG, "allocating!! %d", (int)t->length);
+        memcpy(reps, t->value->data, t->length);
+        APP_LOG(APP_LOG_LEVEL_DEBUG, "copied!! %d", (int)reps[0]);
+      break;
+      default:
+      APP_LOG(APP_LOG_LEVEL_ERROR, "Key %d not recognized!", (int)t->key);
+      break;
+    }
+
+    // Look for next item
+    t = dict_read_next(iterator);
+  }
+
+  // copy to the proper workout
+  if(exNumber > -1) {
+    strcpy(workout[exNumber].name, name);
+    workout[exNumber].series = exSeries;
+    memcpy(workout[exNumber].reps, reps, exSeries);
+    
+    if (exNumber < num_exercises) {
+      int next = exNumber + 1;
+      // Fetch next exercise
+      APP_LOG(APP_LOG_LEVEL_DEBUG, "request exercise %d", next);
+
+      // Begin dictionary
+      DictionaryIterator *iter;
+      app_message_outbox_begin(&iter);
+    
+      // Add a key-value pair
+      dict_write_uint8(iter, KEY_EXERCISE_NUMBER, next);
+    
+      // Send the message!
+      app_message_outbox_send();
+    }
+  }
+  
+  return exNumber;
+}
+
+static void refreshUI(){
+  update_exercise_pos_text();
+  update_exercise_name_text();
+  update_exercise_desc_text();
+  update_timer_text();
+  update_times_menu();
 }
 
 static void update_exercise_pos_text() {
@@ -365,7 +464,7 @@ static void init(void) {
   action_icon_plus = gbitmap_create_with_resource(RESOURCE_ID_IMAGE_ACTION_ICON_PLUS);
   action_icon_minus = gbitmap_create_with_resource(RESOURCE_ID_IMAGE_ACTION_ICON_MINUS);
   
-  initWorkout();
+  //initWorkout();
   
   window = window_create();
   window_set_window_handlers(window, (WindowHandlers) {
@@ -374,6 +473,14 @@ static void init(void) {
   });
 
   window_stack_push(window, true /* Animated */);
+  
+  // Register callbacks for AppMessage
+  app_message_register_inbox_received(inbox_received_callback);
+  app_message_register_inbox_dropped(inbox_dropped_callback);
+  app_message_register_outbox_failed(outbox_failed_callback);
+  app_message_register_outbox_sent(outbox_sent_callback);
+  // Open AppMessage
+  app_message_open(app_message_inbox_size_maximum(), app_message_outbox_size_maximum());
 }
 
 static void deinit(void) {
